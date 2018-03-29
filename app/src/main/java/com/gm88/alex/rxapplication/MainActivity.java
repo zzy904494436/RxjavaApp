@@ -4,16 +4,25 @@ import android.content.Context;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import io.reactivex.BackpressureStrategy;
+import io.reactivex.Flowable;
+import io.reactivex.FlowableEmitter;
+import io.reactivex.FlowableOnSubscribe;
 import io.reactivex.Observable;
 import io.reactivex.ObservableEmitter;
 import io.reactivex.ObservableOnSubscribe;
@@ -24,6 +33,7 @@ import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.BiFunction;
 import io.reactivex.functions.Consumer;
 import io.reactivex.functions.Function;
+import io.reactivex.functions.Predicate;
 import io.reactivex.schedulers.Schedulers;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -34,6 +44,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getName();
     private Context mContext;
     private Disposable disposable;
+    private Subscription subscription;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,11 +62,135 @@ public class MainActivity extends AppCompatActivity {
 //        initTest6();
 //        initTest7();
 
-        initTest8();
+//        initTest8();
 
 //        initTest9();
+//        initTest10();
+//        initTest11();
+//        initTest12();
+        initTest13();
     }
 
+    private void initTest13() {
+        boolean flag = 10 % 2 == 1 && 10 / 3 == 0 && 1 / 0 == 0 ;
+        System.out.println(flag ? "mldn" : "yootk") ;
+    }
+
+    private void initTest12() {
+    }
+
+    private void initTest11() {
+        Flowable.create(new FlowableOnSubscribe<String>() {
+            @Override
+            public void subscribe(FlowableEmitter<String> e) throws Exception {
+                File f = new File("test.txt");
+                if (!f.exists()){
+                    boolean i = new File("test.txt").mkdirs();
+                }
+                Log.d(TAG, "subscribe: " +  f.exists());
+                FileReader reader = new FileReader("test.txt");
+                BufferedReader bufferedReader = new BufferedReader(reader);
+                String str ;
+
+                while ((str = bufferedReader.readLine())!=null && !e.isCancelled()){
+                    while (e.requested() == 0){
+                        if (e.isCancelled()){
+                            break;
+                        }
+                    }
+                e.onNext(str);
+                }
+
+                bufferedReader.close();
+                reader.close();
+
+                e.onComplete();
+            }
+        }, BackpressureStrategy.ERROR).subscribeOn(Schedulers.io())
+                .observeOn(Schedulers.newThread())
+                .subscribe(new Subscriber<String>() {
+                    @Override
+                    public void onSubscribe(Subscription s) {
+                        subscription = s;
+                        s.request(1);
+                    }
+
+                    @Override
+                    public void onNext(String s) {
+                        Log.i(TAG, " " + s);
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+                        Log.e(TAG, "onError: " + t.getMessage() );
+                    }
+
+                    @Override
+                    public void onComplete() {
+
+                    }
+                });
+    }
+
+    //Backpressure 背压概念 oom
+    private void initTest10() {
+        Observable<Integer> observable1 = Observable.create(new ObservableOnSubscribe<Integer>() {
+            @Override
+            public void subscribe(ObservableEmitter<Integer> e) throws Exception {
+                for (int i = 0 ; ; i++){
+                    e.onNext(i);
+                }
+            }
+        }).subscribeOn(Schedulers.io())
+                .filter(new Predicate<Integer>() {                  // 限量
+            @Override
+            public boolean test(Integer integer) throws Exception {
+                return integer % 10 == 0;
+            }
+        }).sample(10 , TimeUnit.SECONDS); //sample 操作  // 通过限时 去限量
+
+        Observable<String> observable2 = Observable.create(new ObservableOnSubscribe<String>() {
+            @Override
+            public void subscribe(ObservableEmitter<String> e) throws Exception {
+                e.onNext("a");
+            }
+        }).subscribeOn(Schedulers.io());
+
+        Observable.zip(observable1, observable2, new BiFunction<Integer, String, Object>() {
+            @Override
+            public Object apply(Integer integer, String s) throws Exception {
+                return s + integer;
+            }
+        }).observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<Object>() {
+                    @Override
+                    public void onSubscribe(Disposable d) {
+
+                    }
+
+                    @Override
+                    public void onNext(Object value) {
+                        Log.d(TAG, "onNext: " + value);
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+
+                    }
+
+                    @Override
+                    public void onComplete() {
+
+                    }
+                });
+    }
+
+    //zip 实践 222  打包请求  (四)end
     private void initTest9() {
     }
     //实践 zip  111
@@ -94,7 +229,9 @@ public class MainActivity extends AppCompatActivity {
                 map.put(integer , s);
                 return map;
             }
-        }).subscribe(new Observer<Map<Integer, String>>() {
+        })
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<Map<Integer, String>>() {
             @Override
             public void onSubscribe(Disposable d) {
                 disposable = d;
@@ -104,6 +241,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onNext(Map<Integer, String> value) {
                 Log.d(TAG, "onNext: " + value.toString());
+                Toast.makeText(mContext, "" + value.toString(), Toast.LENGTH_SHORT).show();
             }
 
             @Override
